@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>document.documentElement.setAttribute('data-lang', localStorage.getItem('lang')||'en');</script>
+<title>Kinematics &amp; Delta Robot Inverse Kinematics</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/theme/white.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/plugin/highlight/monokai.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>
+  :root{ --r-heading-color:#1a1a2e; }
+  .reveal h1, .reveal h2, .reveal h3 { color:#1a1a2e; }
+  .reveal section img.diagram { background:#fff; border-radius:8px; }
+  .small { font-size:0.65em; }
+  .cols { display:flex; gap:2em; align-items:flex-start; text-align:left; }
+  .cols > div { flex:1; min-width:0; }
+  .cols .katex-display .katex { font-size:0.85em; }
+  .katex-display { overflow-x:auto; overflow-y:hidden; max-width:100%; }
+  .reveal pre code { max-height:600px; }
+  .demo-wrap { display:flex; gap:1.5em; align-items:flex-start; text-align:left; font-size:0.55em; }
+  .demo-controls { flex:0 0 340px; width:340px; box-sizing:border-box; }
+  .demo-controls label { display:block; margin-top:0.6em; }
+  .demo-controls input[type=range] { width:220px; }
+  .demo-controls input[type=number] { width:80px; margin-left:0.5em; }
+  .demo-controls b.small { display:block; margin-top:0.9em; color:#1a1a2e; }
+  .canvas-wrap { flex:0 0 480px; }
+  #dr-canvas, #dr-canvas-fk { background:#0f1220; border-radius:8px; cursor:grab; touch-action:none; }
+  .canvas-wrap .hint { color:#999; text-align:center; margin-top:0.4em; }
+  .readout { font-family:monospace; font-size:1.1em; background:#1a1a2e; color:#e6e6e6; padding:0.6em 1em; border-radius:6px; margin-top:0.6em; overflow-wrap:break-word; }
+  .warn { color:#c0392b; font-weight:bold; }
+  table.geo { font-size:0.8em; margin:0 auto; }
+  table.geo td, table.geo th { padding:0.3em 0.8em; }
+  .step-badge { display:inline-block; background:#1a1a2e; color:#fff; border-radius:50%; width:1.6em; height:1.6em; line-height:1.6em; text-align:center; margin-right:0.4em; font-size:0.6em; }
+  html[data-lang="de"] .i18n[lang="en"]{ display:none; }
+  html:not([data-lang="de"]) .i18n[lang="de"]{ display:none; }
+  #lang-toggle { position:fixed; top:10px; right:10px; z-index:1000; padding:.35em .8em; border-radius:6px; border:1px solid #1a1a2e; background:#fff; color:#1a1a2e; font-size:14px; cursor:pointer; }
+</style>
+</head>
+<body>
+<button id="lang-toggle" onclick="toggleLang()">DE</button>
+<div class="reveal">
+<div class="slides">
+
+<section>
+  <h1 class="i18n" lang="en">Kinematics</h1>
+  <h1 class="i18n" lang="de">Kinematik</h1>
+  <h3 class="i18n" lang="en">&amp; the Delta Robot Inverse Kinematics Problem</h3>
+  <h3 class="i18n" lang="de">&amp; das inverse Kinematikproblem des Delta-Roboters</h3>
+  <p class="small i18n" lang="en">A step-by-step derivation, with a live interactive demo</p>
+  <p class="small i18n" lang="de">Eine Schritt-für-Schritt-Herleitung mit interaktiver Live-Demo</p>
+</section>
+
+<section>
+<section>
+  <h2 class="i18n" lang="en">What is Kinematics?</h2>
+  <h2 class="i18n" lang="de">Was ist Kinematik?</h2>
+  <p class="i18n" lang="en">The study of motion — position, velocity, orientation — <b>without</b> considering the forces that cause it.</p>
+  <p class="i18n" lang="de">Die Lehre von der Bewegung — Position, Geschwindigkeit, Orientierung — <b>ohne</b> Berücksichtigung der Kräfte, die sie verursachen.</p>
+  <ul class="i18n" lang="en">
+    <li>Where is the end-effector, given the joint values?</li>
+    <li>What joint values are needed to reach a desired end-effector pose?</li>
+  </ul>
+  <ul class="i18n" lang="de">
+    <li>Wo befindet sich der Endeffektor bei gegebenen Gelenkwerten?</li>
+    <li>Welche Gelenkwerte sind nötig, um eine gewünschte Endeffektor-Pose zu erreichen?</li>
+  </ul>
+  <p class="small i18n" lang="en">Relevant for every robot arm, 3D printer, CNC machine, and articulated mechanism.</p>
+  <p class="small i18n" lang="de">Relevant für jeden Roboterarm, 3D-Drucker, jede CNC-Maschine und jeden Gelenkmechanismus.</p>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Forward vs. Inverse Kinematics</h2>
+  <h2 class="i18n" lang="de">Vorwärts- vs. inverse Kinematik</h2>
+  <div class="cols">
+    <div>
+      <h4 class="i18n" lang="en">Forward (FK)</h4>
+      <h4 class="i18n" lang="de">Vorwärts (FK)</h4>
+      <p class="i18n" lang="en">joint angles &rarr; end-effector pose</p>
+      <p class="i18n" lang="de">Gelenkwinkel &rarr; Endeffektor-Pose</p>
+      <p class="small i18n" lang="en">Usually a straightforward chain of transforms. One unique answer.</p>
+      <p class="small i18n" lang="de">Meist eine einfache Kette von Transformationen. Eindeutige Lösung.</p>
+    </div>
+    <div>
+      <h4 class="i18n" lang="en">Inverse (IK)</h4>
+      <h4 class="i18n" lang="de">Inverse (IK)</h4>
+      <p class="i18n" lang="en">end-effector pose &rarr; joint angles</p>
+      <p class="i18n" lang="de">Endeffektor-Pose &rarr; Gelenkwinkel</p>
+      <p class="small i18n" lang="en">Often multiple solutions, sometimes none. This is what a robot controller needs every cycle.</p>
+      <p class="small i18n" lang="de">Oft mehrere Lösungen, manchmal keine. Genau das braucht eine Robotersteuerung in jedem Zyklus.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Serial vs. Parallel Manipulators</h2>
+  <h2 class="i18n" lang="de">Serielle vs. parallele Manipulatoren</h2>
+  <div class="cols">
+    <div>
+      <h4 class="i18n" lang="en">Serial</h4>
+      <h4 class="i18n" lang="de">Seriell</h4>
+      <p class="small i18n" lang="en">Joints chained one after another (e.g. a 6-axis arm). Large workspace, but the base motors carry all the following links' weight &rarr; slower, less rigid.</p>
+      <p class="small i18n" lang="de">Gelenke hintereinander verkettet (z.&nbsp;B. ein 6-Achs-Arm). Großer Arbeitsraum, aber die Motoren an der Basis tragen das Gewicht aller folgenden Glieder &rarr; langsamer, weniger steif.</p>
+    </div>
+    <div>
+      <h4 class="i18n" lang="en">Parallel</h4>
+      <h4 class="i18n" lang="de">Parallel</h4>
+      <p class="small i18n" lang="en">Multiple limbs connect a fixed base directly to a moving platform. Motors stay fixed at the base &rarr; low inertia, very fast and rigid. Delta robots are the classic example.</p>
+      <p class="small i18n" lang="de">Mehrere Glieder verbinden eine feste Basis direkt mit einer beweglichen Plattform. Motoren bleiben an der Basis fixiert &rarr; geringe Trägheit, sehr schnell und steif. Delta-Roboter sind das klassische Beispiel.</p>
+    </div>
+  </div>
+</section>
+</section>
+
+<section>
+<section>
+  <h2 class="i18n" lang="en">Why Delta Robots?</h2>
+  <h2 class="i18n" lang="de">Warum Delta-Roboter?</h2>
+  <ul class="i18n" lang="en">
+    <li>All 3 motors mounted on the fixed base — the moving arms are light</li>
+    <li>Extremely fast, high acceleration (pick-and-place, sorting)</li>
+    <li>Used in food/pharma packaging, electronics assembly, delta-style 3D printers</li>
+  </ul>
+  <ul class="i18n" lang="de">
+    <li>Alle 3 Motoren sitzen fest an der Basis — die beweglichen Arme sind leicht</li>
+    <li>Extrem schnell, hohe Beschleunigung (Pick-and-Place, Sortieren)</li>
+    <li>Einsatz in Lebensmittel-/Pharmaverpackung, Elektronikmontage, Delta-3D-Druckern</li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Delta Robot Anatomy</h2>
+  <h2 class="i18n" lang="de">Aufbau des Delta-Roboters</h2>
+  <div class="cols">
+    <div>
+      <ul class="small i18n" lang="en">
+        <li><b>Base</b> — fixed, holds 3 rotary motors 120° apart</li>
+        <li><b>Bicep</b> (upper arm) — one per motor, actively driven</li>
+        <li><b>Forearm</b> — a passive <i>parallelogram</i> linkage per arm</li>
+        <li><b>Platform</b> (end-effector) — moves in x, y, z</li>
+      </ul>
+      <ul class="small i18n" lang="de">
+        <li><b>Basis</b> — fest, trägt 3 Drehmotoren im 120°-Abstand</li>
+        <li><b>Bizeps</b> (Oberarm) — einer pro Motor, aktiv angetrieben</li>
+        <li><b>Unterarm</b> — ein passives <i>Parallelogramm</i>-Gestänge pro Arm</li>
+        <li><b>Plattform</b> (Endeffektor) — bewegt sich in x, y, z</li>
+      </ul>
+    </div>
+    <div>
+      <svg viewBox="0 0 320 235" class="diagram" width="380">
+        <!-- base -->
+        <polygon points="50,28 270,28 160,48" fill="none" stroke="#1a1a2e" stroke-width="2"/>
+        <circle cx="50" cy="28" r="4" fill="#1a1a2e"/><circle cx="270" cy="28" r="4" fill="#1a1a2e"/><circle cx="160" cy="48" r="4" fill="#1a1a2e"/>
+        <text x="88" y="16" font-size="11" fill="#1a1a2e">base (fixed)</text>
+        <text x="6" y="22" font-size="10" fill="#1a1a2e">motor</text>
+        <!-- bicep (active) -->
+        <line x1="50" y1="28" x2="88" y2="145" stroke="#c0392b" stroke-width="2.5"/>
+        <line x1="270" y1="28" x2="232" y2="145" stroke="#c0392b" stroke-width="2.5"/>
+        <line x1="160" y1="48" x2="160" y2="150" stroke="#c0392b" stroke-width="2" stroke-dasharray="4,3" opacity="0.5"/>
+        <text x="6" y="90" font-size="11" fill="#c0392b">bicep (active)</text>
+        <!-- forearm (passive parallelogram) -->
+        <!-- rails offset perpendicular to elbow->platform direction; rungs centered exactly on elbow dot (88,145) and platform vertex (118,212) -->
+        <line x1="83.4" y1="147" x2="113.4" y2="214" stroke="#2980b9" stroke-width="2"/>
+        <line x1="92.6" y1="143" x2="122.6" y2="210" stroke="#2980b9" stroke-width="2"/>
+        <line x1="83.4" y1="147" x2="92.6" y2="143" stroke="#2980b9" stroke-width="1.5"/>
+        <line x1="113.4" y1="214" x2="122.6" y2="210" stroke="#2980b9" stroke-width="1.5"/>
+        <!-- rungs centered on elbow dot (232,145) and platform vertex (202,212) -->
+        <line x1="227.4" y1="143" x2="197.4" y2="210" stroke="#2980b9" stroke-width="2"/>
+        <line x1="236.6" y1="147" x2="206.6" y2="214" stroke="#2980b9" stroke-width="2"/>
+        <line x1="227.4" y1="143" x2="236.6" y2="147" stroke="#2980b9" stroke-width="1.5"/>
+        <line x1="197.4" y1="210" x2="206.6" y2="214" stroke="#2980b9" stroke-width="1.5"/>
+        <line x1="160" y1="150" x2="160" y2="213" stroke="#2980b9" stroke-width="2" stroke-dasharray="4,3" opacity="0.5"/>
+        <text x="196" y="185" font-size="11" fill="#2980b9">forearm (passive</text>
+        <text x="196" y="198" font-size="11" fill="#2980b9">parallelogram)</text>
+        <!-- elbow joint dots drawn last so they sit visually on top of the forearm rung -->
+        <circle cx="88" cy="145" r="3.5" fill="#c0392b"/><circle cx="232" cy="145" r="3.5" fill="#c0392b"/>
+        <!-- platform -->
+        <polygon points="118,212 202,212 160,213" fill="none" stroke="#1a1a2e" stroke-width="2"/>
+        <circle cx="118" cy="212" r="3.5" fill="#1a1a2e"/><circle cx="202" cy="212" r="3.5" fill="#1a1a2e"/><circle cx="160" cy="213" r="3.5" fill="#1a1a2e"/>
+        <text x="122" y="230" font-size="11" fill="#1a1a2e">platform (end-effector)</text>
+      </svg>
+      <p class="small i18n" lang="en">Each of the 3 identical arms: a driven bicep + a passive parallelogram forearm that keeps the platform level.</p>
+      <p class="small i18n" lang="de">Jeder der 3 identischen Arme: ein angetriebener Bizeps + ein passives Parallelogramm-Unterarm, das die Plattform waagerecht hält.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">The Key Simplification</h2>
+  <h2 class="i18n" lang="de">Die entscheidende Vereinfachung</h2>
+  <p class="i18n" lang="en">Each forearm is a <b>parallelogram</b>, not a single rod.</p>
+  <p class="i18n" lang="de">Jeder Unterarm ist ein <b>Parallelogramm</b>, keine einzelne Stange.</p>
+  <p class="i18n" lang="en">&rArr; the platform's orientation is always parallel to the base.</p>
+  <p class="i18n" lang="de">&rArr; Die Orientierung der Plattform ist stets parallel zur Basis.</p>
+  <p class="i18n" lang="en"><b>Only 3 translational DOF remain (x, y, z)</b> — no orientation to solve for. That's what makes the delta IK tractable in closed form.</p>
+  <p class="i18n" lang="de"><b>Es bleiben nur 3 translatorische Freiheitsgrade (x, y, z)</b> — keine Orientierung zu lösen. Genau das macht die Delta-IK geschlossen lösbar.</p>
+</section>
+</section>
+
+<section>
+<section>
+  <h2 class="i18n" lang="en">Geometry &amp; Parameters</h2>
+  <h2 class="i18n" lang="de">Geometrie &amp; Parameter</h2>
+  <table class="geo i18n" lang="en">
+    <tr><th>Symbol</th><th>Meaning</th></tr>
+    <tr><td>R<sub>b</sub></td><td>base radius — center to shoulder joint</td></tr>
+    <tr><td>R<sub>p</sub></td><td>platform radius — center to platform joint</td></tr>
+    <tr><td>L<sub>b</sub></td><td>bicep (upper arm) length</td></tr>
+    <tr><td>L<sub>f</sub></td><td>forearm length</td></tr>
+  </table>
+  <table class="geo i18n" lang="de">
+    <tr><th>Symbol</th><th>Bedeutung</th></tr>
+    <tr><td>R<sub>b</sub></td><td>Basisradius — Mitte bis Schultergelenk</td></tr>
+    <tr><td>R<sub>p</sub></td><td>Plattformradius — Mitte bis Plattformgelenk</td></tr>
+    <tr><td>L<sub>b</sub></td><td>Bizeps- (Oberarm-)länge</td></tr>
+    <tr><td>L<sub>f</sub></td><td>Unterarmlänge</td></tr>
+  </table>
+  <p>\( R_{diff} = R_b - R_p \)</p>
+  <p class="small i18n" lang="en">\(R_{diff}\): the net radial offset between base and platform joint circles.</p>
+  <p class="small i18n" lang="de">\(R_{diff}\): der resultierende radiale Versatz zwischen Basis- und Plattform-Gelenkkreis.</p>
+</section>
+</section>
+
+<section>
+<section>
+  <h2 class="i18n" lang="en">Problem Statement</h2>
+  <h2 class="i18n" lang="de">Problemstellung</h2>
+  <p class="i18n" lang="en">Given a target platform center \(P=(x,y,z)\) (relative to the base center), find the 3 bicep angles \(\theta_1,\theta_2,\theta_3\) that place the platform there.</p>
+  <p class="i18n" lang="de">Gegeben sei ein Ziel-Plattformmittelpunkt \(P=(x,y,z)\) (relativ zum Basismittelpunkt); gesucht sind die 3 Bizepswinkel \(\theta_1,\theta_2,\theta_3\), die die Plattform dorthin bringen.</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">1</span> <span class="i18n" lang="en">Exploit the 3-fold Symmetry</span><span class="i18n" lang="de">Die 3-fache Symmetrie nutzen</span></h2>
+  <div class="cols">
+    <div>
+      <p class="i18n" lang="en">The 3 arms are identical, spaced 120° apart. Solve <b>one arm</b> in its own rotated frame, then reuse the same formula 3&times; by rotating \(P\) by \(\gamma_i = 0°, 120°, 240°\).</p>
+      <p class="i18n" lang="de">Die 3 Arme sind identisch und im 120°-Abstand angeordnet. Löse <b>einen Arm</b> in seinem eigenen rotierten Bezugssystem und wende dieselbe Formel 3&times; an, indem \(P\) um \(\gamma_i = 0°, 120°, 240°\) gedreht wird.</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 220" class="diagram" width="380">
+        <circle cx="150" cy="120" r="80" fill="none" stroke="#ccc" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="150" cy="120" r="2.5" fill="#1a1a2e"/>
+        <text x="156" y="118" font-size="9">O</text>
+        <!-- spokes -->
+        <line x1="150" y1="120" x2="150" y2="28" stroke="#c0392b" stroke-width="2"/>
+        <line x1="150" y1="120" x2="229.7" y2="166" stroke="#2980b9" stroke-width="2"/>
+        <line x1="150" y1="120" x2="70.3" y2="166" stroke="#16a085" stroke-width="2"/>
+        <!-- shoulders -->
+        <circle cx="150" cy="40" r="5" fill="#c0392b"/>
+        <circle cx="219.3" cy="160" r="5" fill="#2980b9"/>
+        <circle cx="80.7" cy="160" r="5" fill="#16a085"/>
+        <text x="94" y="22" font-size="10" fill="#c0392b">arm 1 (&#947;=0°)</text>
+        <text x="222" y="180" font-size="10" fill="#2980b9">arm 2 (&#947;=120°)</text>
+        <text x="4" y="180" font-size="10" fill="#16a085">arm 3 (&#947;=240°)</text>
+        <!-- P -->
+        <line x1="150" y1="120" x2="190" y2="75" stroke="#8e44ad" stroke-width="1" stroke-dasharray="3,2"/>
+        <circle cx="190" cy="75" r="5" fill="#8e44ad"/>
+        <text x="196" y="72" font-size="11" fill="#8e44ad" font-weight="bold">P (target)</text>
+      </svg>
+      <p class="small i18n" lang="en">Same target \(P\), three shoulders. Rotating \(P\) by \(-\gamma_i\) (equivalently, rotating the frame by \(\gamma_i\)) lets every arm reuse arm 1's formula.</p>
+      <p class="small i18n" lang="de">Gleiches Ziel \(P\), drei Schultern. Das Drehen von \(P\) um \(-\gamma_i\) (äquivalent: Drehen des Bezugssystems um \(\gamma_i\)) lässt jeden Arm dieselbe Formel von Arm 1 wiederverwenden.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">2</span> <span class="i18n" lang="en">Per-arm Local Frame</span><span class="i18n" lang="de">Lokales Bezugssystem pro Arm</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">Rotate \(P\) into arm \(i\)'s frame and split into radial / tangential / vertical components relative to that arm's shoulder joint:</p>
+      <p class="small i18n" lang="de">Drehe \(P\) in das Bezugssystem von Arm \(i\) und zerlege es in radiale/tangentiale/vertikale Komponenten relativ zum Schultergelenk dieses Arms:</p>
+      <p>\[ W_x = x\sin\gamma_i - y\cos\gamma_i - R_{diff} \]</p>
+      <p>\[ W_y = x\cos\gamma_i + y\sin\gamma_i \]</p>
+      <p>\[ W_z = z \]</p>
+      <p class="small i18n" lang="en">\((W_x,W_y,W_z)\) = the platform joint position, expressed relative to arm \(i\)'s shoulder.</p>
+      <p class="small i18n" lang="de">\((W_x,W_y,W_z)\) = die Position des Plattformgelenks, ausgedrückt relativ zur Schulter von Arm \(i\).</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 235" class="diagram" width="380">
+        <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#1a1a2e"/></marker></defs>
+        <!-- base circle context: 3 shoulders on the base, arm i highlighted -->
+        <circle cx="150" cy="190" r="68" fill="none" stroke="#ccc" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="150" y1="190" x2="208.9" y2="224" stroke="#ddd" stroke-width="1"/>
+        <line x1="150" y1="190" x2="91.1" y2="224" stroke="#ddd" stroke-width="1"/>
+        <circle cx="208.9" cy="224" r="4" fill="#ccc"/>
+        <circle cx="91.1" cy="224" r="4" fill="#ccc"/>
+        <text x="196" y="234" font-size="8" fill="#999">arms i+1, i+2</text>
+        <circle cx="150" cy="190" r="3" fill="#1a1a2e"/>
+        <text x="118" y="208" font-size="10">O (base center)</text>
+        <!-- Rb dashed connector -->
+        <line x1="150" y1="190" x2="150" y2="122" stroke="#888" stroke-width="1.2" stroke-dasharray="4,3"/>
+        <text x="156" y="158" font-size="10" fill="#555">R<tspan font-size="7" dy="2">b</tspan></text>
+        <!-- shoulder B (arm i) = local-frame origin -->
+        <text x="60" y="108" font-size="11">B (shoulder, arm i)</text>
+        <!-- axes at B -->
+        <line x1="150" y1="122" x2="150" y2="40" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="156" y="50" font-size="10">x (radial, r<tspan font-size="7" dy="2">i</tspan><tspan dy="-2">)</tspan></text>
+        <line x1="150" y1="122" x2="270" y2="122" stroke="#1a1a2e" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="222" y="116" font-size="10">y (tangential)</text>
+        <!-- z out of page symbol: centered exactly on B, the local-frame origin, so it reads as the 3rd axis at that point -->
+        <circle cx="150" cy="122" r="7" fill="none" stroke="#888" stroke-width="1"/>
+        <circle cx="150" cy="122" r="1.6" fill="#888"/>
+        <text x="97" y="146" font-size="8" fill="#888">z (out of page)</text>
+        <!-- dashed projection lines -->
+        <line x1="225" y1="75" x2="225" y2="122" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="225" y1="75" x2="150" y2="75" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>
+        <!-- highlighted Wx (radial) and Wy (tangential) segments, ON the axes -->
+        <line x1="150" y1="122" x2="150" y2="75" stroke="#c0392b" stroke-width="4"/>
+        <text x="112" y="97" font-size="12" fill="#c0392b" font-weight="bold">Wx</text>
+        <line x1="150" y1="122" x2="225" y2="122" stroke="#2980b9" stroke-width="4"/>
+        <text x="178" y="136" font-size="12" fill="#2980b9" font-weight="bold">Wy</text>
+        <!-- P -->
+        <circle cx="225" cy="75" r="5" fill="#16a085"/>
+        <text x="233" y="72" font-size="12" fill="#16a085" font-weight="bold">P</text>
+      </svg>
+      <p class="small i18n" lang="en">Top view of the base: shoulder \(B\) sits at radius \(R_b\) from center \(O\). \(P\)'s position is measured along \(B\)'s own radial/tangential axes (colored bars = the \(W_x, W_y\) you get from the formula).</p>
+      <p class="small i18n" lang="de">Draufsicht der Basis: Schulter \(B\) liegt im Radius \(R_b\) um Mittelpunkt \(O\). Die Position von \(P\) wird entlang der radialen/tangentialen Achsen von \(B\) gemessen (farbige Balken = die \(W_x, W_y\) aus der Formel).</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">3</span> <span class="i18n" lang="en">Elbow Lives in One Plane</span><span class="i18n" lang="de">Der Ellbogen liegt in einer Ebene</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">The bicep only rotates in the vertical plane through its shoulder — so in the local frame the elbow has <b>no tangential component</b>:</p>
+      <p class="small i18n" lang="de">Der Bizeps rotiert nur in der Vertikalebene durch seine Schulter — im lokalen Bezugssystem hat der Ellbogen also <b>keine tangentiale Komponente</b>:</p>
+      <p>\[ E = (L_b\cos\theta_i,\ 0,\ -L_b\sin\theta_i) \]</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 220" class="diagram" width="380">
+        <defs>
+          <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#1a1a2e"/></marker>
+          <marker id="arrowO" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#d68910"/></marker>
+          <marker id="arrowT" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#16a085"/></marker>
+        </defs>
+        <!-- mini top-view inset for context -->
+        <text x="222" y="8" font-size="7" fill="#888">(top view)</text>
+        <circle cx="250" cy="28" r="16" fill="none" stroke="#ccc" stroke-width="1"/>
+        <circle cx="250" cy="28" r="1.5" fill="#999"/>
+        <circle cx="263.9" cy="36" r="2.5" fill="#ccc"/>
+        <circle cx="236.1" cy="36" r="2.5" fill="#ccc"/>
+        <line x1="250" y1="28" x2="250" y2="14" stroke="#c0392b" stroke-width="2"/>
+        <!-- ground / reference line (theta = 0), shortened so it can't reach the inset -->
+        <line x1="15" y1="45" x2="215" y2="45" stroke="#888" stroke-width="1.5"/>
+        <line x1="20" y1="45" x2="14" y2="52" stroke="#888" stroke-width="1"/>
+        <line x1="30" y1="45" x2="24" y2="52" stroke="#888" stroke-width="1"/>
+        <line x1="40" y1="45" x2="34" y2="52" stroke="#888" stroke-width="1"/>
+        <line x1="50" y1="45" x2="44" y2="52" stroke="#888" stroke-width="1"/>
+        <text x="150" y="41" font-size="9" fill="#666">reference (&#952;=0)</text>
+        <!-- shoulder B -->
+        <circle cx="75" cy="45" r="5" fill="#1a1a2e"/>
+        <text x="30" y="35" font-size="11">B (shoulder i)</text>
+        <!-- z axis -->
+        <line x1="75" y1="45" x2="75" y2="190" stroke="#1a1a2e" stroke-width="1.2" marker-end="url(#arrow2)"/>
+        <text x="28" y="122" font-size="10">z (down)</text>
+        <!-- theta arc -->
+        <path d="M 103 45 A 28 28 0 0 1 97 62" fill="none" stroke="#888" stroke-width="1"/>
+        <text x="98" y="56" font-size="11">&#952;</text>
+        <!-- bicep -->
+        <line x1="75" y1="45" x2="166" y2="116" stroke="#c0392b" stroke-width="3"/>
+        <circle cx="166" cy="116" r="4" fill="#c0392b"/>
+        <text x="172" y="112" font-size="11" fill="#c0392b">E</text>
+        <!-- vector decomposition, tip-to-tail: Lb cos(theta) horizontal leg from B to the corner directly above E -->
+        <line x1="75" y1="45" x2="163" y2="45" stroke="#d68910" stroke-width="3" marker-end="url(#arrowO)"/>
+        <text x="105" y="60" font-size="10" fill="#d68910">L<tspan font-size="7" dy="2">b</tspan><tspan dy="-2"> cos&#952;</tspan></text>
+        <!-- Lb sin(theta) vertical leg, drawn upward from E to that same corner, so the decomposition visibly closes at E -->
+        <line x1="166" y1="112" x2="166" y2="48" stroke="#16a085" stroke-width="3" marker-end="url(#arrowT)"/>
+        <text x="172" y="82" font-size="10" fill="#16a085">L<tspan font-size="7" dy="2">b</tspan><tspan dy="-2"> sin&#952;</tspan></text>
+        <!-- forearm -->
+        <line x1="166" y1="116" x2="210" y2="158" stroke="#2980b9" stroke-width="2.5" stroke-dasharray="5,3"/>
+        <circle cx="210" cy="158" r="4" fill="#2980b9"/>
+        <text x="216" y="161" font-size="11" fill="#2980b9">W</text>
+        <!-- Wy out-of-plane symbol -->
+        <line x1="210" y1="158" x2="232" y2="146" stroke="#2980b9" stroke-width="0.75" stroke-dasharray="2,2"/>
+        <circle cx="232" cy="146" r="6" fill="none" stroke="#2980b9" stroke-width="1"/>
+        <circle cx="232" cy="146" r="1.3" fill="#2980b9"/>
+        <text x="83" y="203" font-size="9" fill="#2980b9">Wy: forearm reaches W sideways</text>
+        <text x="83" y="214" font-size="9" fill="#2980b9">(out of this plane)</text>
+      </svg>
+      <p class="small i18n" lang="en">Side slice through shoulder \(B\) along its radial direction (see inset). The bicep (red) swings only in this plane, reaching \(E\) — its horizontal/vertical legs are exactly \(L_b\cos\theta\) and \(L_b\sin\theta\). The forearm (blue, dashed) then reaches \(W\), which can also shift sideways (tangentially) out of the plane.</p>
+      <p class="small i18n" lang="de">Seitenschnitt durch Schulter \(B\) entlang ihrer radialen Richtung (siehe Einschub). Der Bizeps (rot) schwenkt nur in dieser Ebene bis zu \(E\) — seine horizontale/vertikale Komponente sind genau \(L_b\cos\theta\) und \(L_b\sin\theta\). Der Unterarm (blau, gestrichelt) erreicht dann \(W\), das zusätzlich seitlich (tangential) aus der Ebene heraus verschoben sein kann.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">4</span> <span class="i18n" lang="en">Apply the Forearm Length Constraint</span><span class="i18n" lang="de">Die Unterarmlängen-Bedingung anwenden</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">The forearm is rigid, length \(L_f\): \(|W-E| = L_f\). Since \(|W|^2=W_x^2+W_y^2+W_z^2\) is already known, expanding and collecting the constants as \(K\):</p>
+      <p class="small i18n" lang="de">Der Unterarm ist starr mit Länge \(L_f\): \(|W-E| = L_f\). Da \(|W|^2=W_x^2+W_y^2+W_z^2\) bereits bekannt ist, ergibt das Ausmultiplizieren und Zusammenfassen der Konstanten zu \(K\):</p>
+      <p>\[ K = |W|^2 + L_b^2 - L_f^2 \]</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 210" class="diagram" width="380">
+        <!-- circle A: elbow locus (radius Lb around B) -->
+        <circle cx="80" cy="80" r="45" fill="none" stroke="#c0392b" stroke-width="1.3" stroke-dasharray="4,3"/>
+        <text x="14" y="45" font-size="9" fill="#c0392b">radius L<tspan font-size="6.5" dy="2">b</tspan><tspan dy="-2"> (elbow locus)</tspan></text>
+        <!-- circle B: reach around W (effective radius, accounts for Wy) -->
+        <circle cx="80" cy="145" r="50" fill="none" stroke="#2980b9" stroke-width="1.3" stroke-dasharray="4,3"/>
+        <text x="98" y="200" font-size="9" fill="#2980b9">radius &#8730;(L<tspan font-size="6.5" dy="2">f</tspan><tspan dy="-2">&sup2;&minus;W</tspan><tspan font-size="6.5" dy="2">y</tspan><tspan dy="-2">&sup2;)</tspan></text>
+        <line x1="80" y1="80" x2="240" y2="80" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="245" y="83" font-size="9" fill="#999">&#952;=0</text>
+        <circle cx="80" cy="80" r="4" fill="#1a1a2e"/>
+        <text x="55" y="70" font-size="11">B</text>
+        <circle cx="80" cy="145" r="4" fill="#8e44ad"/>
+        <text x="55" y="152" font-size="11" fill="#8e44ad">W</text>
+        <!-- two candidate intersection points -->
+        <circle cx="114.5" cy="108.85" r="4.5" fill="#555"/>
+        <text x="121" y="106" font-size="10" fill="#555">E&#8321;</text>
+        <circle cx="45.5" cy="108.85" r="4.5" fill="#555"/>
+        <text x="10" y="106" font-size="10" fill="#555">E&#8322;</text>
+        <line x1="80" y1="80" x2="114.5" y2="108.85" stroke="#555" stroke-width="1" stroke-dasharray="3,2"/>
+        <line x1="80" y1="80" x2="45.5" y2="108.85" stroke="#555" stroke-width="1" stroke-dasharray="3,2"/>
+      </svg>
+      <p class="small i18n" lang="en">In arm \(i\)'s plane, \(E\) must sit on <em>both</em> circles: distance \(L_b\) from shoulder \(B\), and distance \(L_f\) from \(W\) (adjusted for the sideways offset \(W_y\)). Two circles &rarr; up to two crossing points.</p>
+      <p class="small i18n" lang="de">In der Ebene von Arm \(i\) muss \(E\) auf <em>beiden</em> Kreisen liegen: Abstand \(L_b\) von Schulter \(B\) und Abstand \(L_f\) von \(W\) (angepasst um den seitlichen Versatz \(W_y\)). Zwei Kreise &rarr; bis zu zwei Schnittpunkte.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">4</span> <span class="i18n" lang="en">Apply the Forearm Length Constraint</span><span class="i18n" lang="de">Die Unterarmlängen-Bedingung anwenden</span> <span style="opacity:.5" class="i18n" lang="en">(cont.)</span><span style="opacity:.5" class="i18n" lang="de">(Forts.)</span></h2>
+  <p class="small i18n" lang="en">Substituting \(E=(L_b\cos\theta_i,\,0,\,-L_b\sin\theta_i)\) turns this into a single equation in \(\theta_i\):</p>
+  <p class="small i18n" lang="de">Einsetzen von \(E=(L_b\cos\theta_i,\,0,\,-L_b\sin\theta_i)\) macht daraus eine einzige Gleichung in \(\theta_i\):</p>
+  <p>\[ K + 2L_b\big(W_z\sin\theta_i - W_x\cos\theta_i\big) = 0 \]</p>
+  <p class="small i18n" lang="en">i.e. \( a\sin\theta + b\cos\theta = c \), with \(a=2L_bW_z,\ b=-2L_bW_x,\ c=-K\).</p>
+  <p class="small i18n" lang="de">d.&nbsp;h. \( a\sin\theta + b\cos\theta = c \), mit \(a=2L_bW_z,\ b=-2L_bW_x,\ c=-K\).</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">4</span> <span class="i18n" lang="en">Apply the Forearm Length Constraint</span><span class="i18n" lang="de">Die Unterarmlängen-Bedingung anwenden</span> <span style="opacity:.5" class="i18n" lang="en">&mdash; Workspace &amp; Singularities</span><span style="opacity:.5" class="i18n" lang="de">&mdash; Arbeitsraum &amp; Singularitäten</span></h2>
+  <div class="cols">
+    <div>
+      <svg viewBox="0 0 320 200" class="diagram" width="380">
+        <line x1="160" y1="10" x2="160" y2="195" stroke="#eee" stroke-width="1" stroke-dasharray="3,3"/>
+        <!-- left panel: normal, 2 solutions -->
+        <text x="6" y="15" font-size="10" fill="#333" font-weight="bold">normal: 2 solutions</text>
+        <circle cx="70" cy="75" r="42" fill="none" stroke="#c0392b" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="70" cy="135" r="42" fill="none" stroke="#2980b9" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="70" cy="75" r="4" fill="#1a1a2e"/>
+        <text x="76" y="70" font-size="10">B</text>
+        <circle cx="70" cy="135" r="4" fill="#8e44ad"/>
+        <text x="76" y="142" font-size="10" fill="#8e44ad">W</text>
+        <circle cx="40.6" cy="105" r="4" fill="#555"/>
+        <circle cx="99.4" cy="105" r="4" fill="#555"/>
+        <text x="24" y="185" font-size="9" fill="#555">2 crossing points</text>
+        <!-- right panel: singular, tangent circles, 1 solution -->
+        <text x="172" y="15" font-size="10" fill="#333" font-weight="bold">singular: 1 solution</text>
+        <circle cx="250" cy="60" r="42" fill="none" stroke="#c0392b" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="250" cy="144" r="42" fill="none" stroke="#2980b9" stroke-width="1" stroke-dasharray="4,3"/>
+        <circle cx="250" cy="60" r="4" fill="#1a1a2e"/>
+        <text x="256" y="53" font-size="10">B</text>
+        <circle cx="250" cy="144" r="4" fill="#8e44ad"/>
+        <text x="256" y="151" font-size="10" fill="#8e44ad">W</text>
+        <line x1="250" y1="60" x2="250" y2="102" stroke="#c0392b" stroke-width="2.5"/>
+        <line x1="250" y1="102" x2="250" y2="144" stroke="#2980b9" stroke-width="2.5"/>
+        <circle cx="250" cy="102" r="5" fill="#d68910"/>
+        <text x="174" y="98" font-size="9" fill="#d68910">bicep+forearm colinear</text>
+        <text x="205" y="185" font-size="9" fill="#555">1 tangent point (disc=0)</text>
+      </svg>
+    </div>
+    <div>
+      <ul class="small i18n" lang="en">
+        <li>Same two circles as above. As the target moves toward the workspace edge, they slide apart: 2 crossings (normal) &rarr; 1 tangent point (singular) &rarr; 0 crossings (unreachable)</li>
+        <li>That's exactly the sign of <code>disc = a&sup2;+b&sup2;-c&sup2;</code> from Step 5</li>
+        <li>Reachable volume overall is also bounded by \(L_b+L_f\) and each joint's angle limits</li>
+      </ul>
+      <ul class="small i18n" lang="de">
+        <li>Dieselben zwei Kreise wie oben. Bewegt sich das Ziel zum Rand des Arbeitsraums, driften sie auseinander: 2 Schnittpunkte (normal) &rarr; 1 Tangentenpunkt (singulär) &rarr; 0 Schnittpunkte (unerreichbar)</li>
+        <li>Das ist genau das Vorzeichen von <code>disc = a&sup2;+b&sup2;-c&sup2;</code> aus Schritt 5</li>
+        <li>Das insgesamt erreichbare Volumen ist zudem durch \(L_b+L_f\) sowie die Winkelgrenzen jedes Gelenks begrenzt</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">5</span> <span class="i18n" lang="en">Solve with the Half-angle Substitution</span><span class="i18n" lang="de">Lösung über die Halbwinkel-Substitution</span></h2>
+  <p class="small i18n" lang="en">Let \(u=\tan(\theta_i/2)\), so \(\sin\theta=\frac{2u}{1+u^2}\), \(\cos\theta=\frac{1-u^2}{1+u^2}\). The equation becomes quadratic:</p>
+  <p class="small i18n" lang="de">Sei \(u=\tan(\theta_i/2)\), also \(\sin\theta=\frac{2u}{1+u^2}\), \(\cos\theta=\frac{1-u^2}{1+u^2}\). Die Gleichung wird quadratisch:</p>
+  <p>\[ (b+c)\,u^2 - 2a\,u - (b-c) = 0 \]</p>
+  <p>\[ u = \frac{a \pm \sqrt{a^2+b^2-c^2}}{b+c} \qquad \theta_i = 2\arctan(u) \]</p>
+  <p class="small i18n" lang="en">If \(a^2+b^2-c^2 &lt; 0\): the target is <b>unreachable</b> for this arm.</p>
+  <p class="small i18n" lang="de">Falls \(a^2+b^2-c^2 &lt; 0\): Das Ziel ist für diesen Arm <b>unerreichbar</b>.</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">6</span> <span class="i18n" lang="en">Two Solutions &mdash; Pick the Physical One</span><span class="i18n" lang="de">Zwei Lösungen &mdash; die physikalische wählen</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">The \(\pm\) gives two elbow configurations. In practice, pick the branch with the smaller \(|\theta_i|\) — the arm that doesn't fold back past vertical (or, for a moving robot, whichever branch is closest to the previous \(\theta_i\), for smooth motion).</p>
+      <p class="small i18n" lang="de">Das \(\pm\) liefert zwei Ellbogenkonfigurationen. In der Praxis wählt man den Zweig mit dem kleineren \(|\theta_i|\) — den Arm, der nicht über die Vertikale hinaus zurückklappt (oder, bei einem bewegten Roboter, den Zweig, der dem vorherigen \(\theta_i\) am nächsten liegt, für eine ruckfreie Bewegung).</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 210" class="diagram" width="380">
+        <!-- base center O for context: B sits at radius Rb from it (see Step 2) -->
+        <circle cx="25" cy="80" r="3" fill="#555"/>
+        <text x="4" y="72" font-size="9" fill="#555">O</text>
+        <line x1="25" y1="80" x2="80" y2="80" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="32" y="75" font-size="8" fill="#888">R<tspan font-size="6" dy="1.5">b</tspan></text>
+        <circle cx="80" cy="80" r="45" fill="none" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="80" cy="145" r="50" fill="none" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="80" cy="80" r="4" fill="#1a1a2e"/>
+        <text x="55" y="70" font-size="11">B</text>
+        <line x1="80" y1="80" x2="240" y2="80" stroke="#ccc" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="245" y="83" font-size="9" fill="#999">&#952;=0</text>
+        <!-- rejected branch: swings inward/left, large theta -->
+        <line x1="80" y1="80" x2="45.5" y2="108.85" stroke="#999" stroke-width="2" stroke-dasharray="4,3"/>
+        <circle cx="45.5" cy="108.85" r="4.5" fill="#999"/>
+        <text x="4" y="128" font-size="9" fill="#999">E&#8321; rejected</text>
+        <text x="4" y="140" font-size="9" fill="#999">(folds inward, large &#952;)</text>
+        <!-- physical branch: swings outward/right, small theta -->
+        <line x1="80" y1="80" x2="114.5" y2="108.85" stroke="#c0392b" stroke-width="3"/>
+        <circle cx="114.5" cy="108.85" r="5" fill="#c0392b"/>
+        <text x="122" y="100" font-size="9" fill="#c0392b" font-weight="bold">E&#8322; chosen</text>
+        <text x="122" y="112" font-size="9" fill="#c0392b" font-weight="bold">(small &#952;)</text>
+        <path d="M 108 80 A 28 28 0 0 1 100.4 96.7" fill="none" stroke="#c0392b" stroke-width="1.2"/>
+        <path d="M 60 80 A 20 20 0 0 0 65.9 92.7" fill="none" stroke="#999" stroke-width="1"/>
+      </svg>
+      <p class="small i18n" lang="en">Same two candidates from Step 4. \(E_2\) keeps the bicep swinging outward and down (physical); \(E_1\) would require it to fold back toward the center — geometrically valid, but not how the arm can actually move.</p>
+      <p class="small i18n" lang="de">Dieselben zwei Kandidaten aus Schritt 4. \(E_2\) lässt den Bizeps nach außen und unten schwenken (physikalisch); \(E_1\) würde ein Zurückklappen zur Mitte erfordern — geometrisch gültig, aber nicht so, wie sich der Arm tatsächlich bewegen kann.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">7</span> <span class="i18n" lang="en">Repeat for All 3 Arms</span><span class="i18n" lang="de">Für alle 3 Arme wiederholen</span></h2>
+  <p class="small i18n" lang="en">Closed form for each arm \(i\) (\(\gamma_i\) from Step 2, \(a_i,b_i,c_i\) from Step 4):</p>
+  <p class="small i18n" lang="de">Geschlossene Form für jeden Arm \(i\) (\(\gamma_i\) aus Schritt 2, \(a_i,b_i,c_i\) aus Schritt 4):</p>
+  <p>\[ \theta_i = 2\arctan\!\left(\frac{a_i+\sqrt{a_i^2+b_i^2-c_i^2}}{b_i+c_i}\right) \]</p>
+  <p>\[ \gamma_i = \tfrac{2\pi i}{3},\ \ i=0,1,2 \]</p>
+  <p class="small i18n" lang="en">Do this once per arm, using that arm's own \(\gamma_i\), \(a_i\), \(b_i\), \(c_i\) — three independent 1-D solves, no coupling between arms.</p>
+  <p class="small i18n" lang="de">Das einmal pro Arm mit dessen eigenem \(\gamma_i\), \(a_i\), \(b_i\), \(c_i\) durchführen — drei unabhängige 1-D-Lösungen, keine Kopplung zwischen den Armen.</p>
+</section>
+<section>
+  <h2><span class="step-badge">7</span> <span class="i18n" lang="en">Repeat for All 3 Arms</span><span class="i18n" lang="de">Für alle 3 Arme wiederholen</span> <span style="opacity:.5" class="i18n" lang="en">(cont.)</span><span style="opacity:.5" class="i18n" lang="de">(Forts.)</span></h2>
+  <p class="small i18n" lang="en">Equivalent Python:</p>
+  <p class="small i18n" lang="de">Äquivalenter Python-Code:</p>
+  <pre><code class="language-python" data-trim>import math
+
+def delta_ik(x, y, z, Rb, Rp, Lb, Lf):
+    Rdiff = Rb - Rp
+    theta = [0, 0, 0]
+    for i in range(3):
+        gamma = math.radians(i * 120)
+        Wx = x*math.sin(gamma) - y*math.cos(gamma) - Rdiff
+        Wy = x*math.cos(gamma) + y*math.sin(gamma)
+        Wz = z
+        a = 2*Lb*Wz
+        b = -2*Lb*Wx
+        c = -(Wx**2 + Wy**2 + Wz**2 + Lb**2 - Lf**2)
+        disc = a*a + b*b - c*c
+        if disc < 0:
+            return None                       # unreachable
+        u = (a + math.sqrt(disc)) / (b + c)   # or (a - sqrt(disc))/(b+c)
+        theta[i] = 2 * math.atan(u)           # pick physical branch
+    return theta
+</code></pre>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Live Demo &mdash; Inverse Kinematics</h2>
+  <h2 class="i18n" lang="de">Live-Demo &mdash; Inverse Kinematik</h2>
+  <div class="demo-wrap">
+    <div class="demo-controls">
+      <b class="small i18n" lang="en">Target position</b>
+      <b class="small i18n" lang="de">Zielposition</b>
+      <label>x: <span id="vx">50</span> mm<br><input id="sx" type="range" min="-120" max="120" value="50" step="1"></label>
+      <label>y: <span id="vy">30</span> mm<br><input id="sy" type="range" min="-120" max="120" value="30" step="1"></label>
+      <label><span class="i18n" lang="en">depth below base</span><span class="i18n" lang="de">Tiefe unter der Basis</span>: <span id="vz">420</span> mm<br><input id="sz" type="range" min="250" max="550" value="420" step="1"></label>
+      <b class="small i18n" lang="en">Robot geometry</b>
+      <b class="small i18n" lang="de">Robotergeometrie</b>
+      <label>R<sub>b</sub> (<span class="i18n" lang="en">base radius, mm</span><span class="i18n" lang="de">Basisradius, mm</span>): <input id="sRb" type="number" min="10" max="500" value="100" step="1"></label>
+      <label>R<sub>p</sub> (<span class="i18n" lang="en">platform radius, mm</span><span class="i18n" lang="de">Plattformradius, mm</span>): <input id="sRp" type="number" min="5" max="300" value="40" step="1"></label>
+      <label>L<sub>b</sub> (<span class="i18n" lang="en">bicep length, mm</span><span class="i18n" lang="de">Bizepslänge, mm</span>): <input id="sLb" type="number" min="20" max="800" value="200" step="1"></label>
+      <label>L<sub>f</sub> (<span class="i18n" lang="en">forearm length, mm</span><span class="i18n" lang="de">Unterarmlänge, mm</span>): <input id="sLf" type="number" min="20" max="1000" value="400" step="1"></label>
+      <div class="readout" id="readout">&theta;1 = -- &nbsp; &theta;2 = -- &nbsp; &theta;3 = --</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="dr-canvas" width="480" height="420"></canvas>
+      <div class="hint i18n" lang="en">drag to rotate &middot; shift+drag to pan &middot; scroll to zoom &middot; double-click to reset</div>
+      <div class="hint i18n" lang="de">Ziehen zum Drehen &middot; Umschalt+Ziehen zum Verschieben &middot; Scrollen zum Zoomen &middot; Doppelklick zum Zurücksetzen</div>
+    </div>
+  </div>
+</section>
+
+</section>
+
+<section>
+<section>
+  <h2 class="i18n" lang="en">Forward Kinematics: the Reverse Problem</h2>
+  <h2 class="i18n" lang="de">Vorwärtskinematik: das umgekehrte Problem</h2>
+  <p class="i18n" lang="en">Given the 3 bicep angles \(\theta_1,\theta_2,\theta_3\) (and \(R_b,R_p,L_b,L_f\)), find the platform center \(P=(x,y,z)\).</p>
+  <p class="i18n" lang="de">Gegeben seien die 3 Bizepswinkel \(\theta_1,\theta_2,\theta_3\) (sowie \(R_b,R_p,L_b,L_f\)); gesucht ist der Plattformmittelpunkt \(P=(x,y,z)\).</p>
+  <p class="small i18n" lang="en">Unlike IK, this doesn't split into 3 independent 1-D problems — all 3 arms must agree on the same \(P\), so it takes a different trick: <b>trilateration</b>.</p>
+  <p class="small i18n" lang="de">Anders als bei der IK zerfällt dies nicht in 3 unabhängige 1-D-Probleme — alle 3 Arme müssen sich auf denselben Punkt \(P\) einigen. Das erfordert einen anderen Kniff: <b>Trilateration</b>.</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">1</span> <span class="i18n" lang="en">Each Arm Constrains P to a Sphere</span><span class="i18n" lang="de">Jeder Arm schränkt P auf eine Kugel ein</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">\(\theta_i\) is known, so elbow \(E\) is known. Shift it by \(R_p\) (same trick as \(R_{diff}\)) to get a fixed sphere center \(C_i\):</p>
+      <p class="small i18n" lang="de">\(\theta_i\) ist bekannt, also auch der Ellbogen \(E\). Verschiebt man ihn um \(R_p\) (derselbe Kniff wie bei \(R_{diff}\)), erhält man einen festen Kugelmittelpunkt \(C_i\):</p>
+      <p>\[ k_i = R_{diff} + L_b\cos\theta_i \]</p>
+      <p>\[ h_i = -L_b\sin\theta_i \]</p>
+      <p>\[ C_i = (k_i\sin\gamma_i,\ -k_i\cos\gamma_i,\ h_i) \]</p>
+      <p class="small i18n" lang="en">The forearm is rigid: \(|P-C_i|=L_f\).</p>
+      <p class="small i18n" lang="de">Der Unterarm ist starr: \(|P-C_i|=L_f\).</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 210" class="diagram" width="380">
+        <defs><marker id="arrowFK1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#1a1a2e"/></marker></defs>
+        <line x1="15" y1="45" x2="200" y2="45" stroke="#888" stroke-width="1.5"/>
+        <text x="140" y="41" font-size="9" fill="#666">reference (&#952;=0)</text>
+        <circle cx="75" cy="45" r="5" fill="#1a1a2e"/>
+        <text x="30" y="35" font-size="11">B (shoulder i)</text>
+        <line x1="75" y1="45" x2="75" y2="190" stroke="#1a1a2e" stroke-width="1.2" marker-end="url(#arrowFK1)"/>
+        <text x="28" y="122" font-size="10">z (down)</text>
+        <path d="M 103 45 A 28 28 0 0 1 97 62" fill="none" stroke="#888" stroke-width="1"/>
+        <text x="98" y="56" font-size="11">&#952;<tspan font-size="7" dy="2">i</tspan></text>
+        <text x="103" y="75" font-size="9" fill="#888">(given)</text>
+        <line x1="75" y1="45" x2="166" y2="116" stroke="#c0392b" stroke-width="3"/>
+        <circle cx="166" cy="116" r="4" fill="#c0392b"/>
+        <text x="172" y="112" font-size="11" fill="#c0392b">E</text>
+        <line x1="166" y1="116" x2="140" y2="116" stroke="#8e44ad" stroke-width="2" stroke-dasharray="4,2"/>
+        <text x="92" y="130" font-size="9" fill="#8e44ad">&minus;R<tspan font-size="6.5" dy="2">p</tspan></text>
+        <circle cx="140" cy="116" r="5" fill="#8e44ad"/>
+        <text x="112" y="103" font-size="11" fill="#8e44ad" font-weight="bold">C<tspan font-size="7" dy="2">i</tspan></text>
+        <circle cx="140" cy="116" r="55" fill="none" stroke="#2980b9" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="150" y="176" font-size="9" fill="#2980b9">radius L<tspan font-size="6.5" dy="2">f</tspan></text>
+      </svg>
+      <p class="small i18n" lang="en">Side slice through shoulder \(B\) (same plane as Step 3 of the IK derivation). \(C_i\) is not the elbow itself, just the elbow nudged by \(R_p\).</p>
+      <p class="small i18n" lang="de">Seitenschnitt durch Schulter \(B\) (dieselbe Ebene wie in Schritt 3 der IK-Herleitung). \(C_i\) ist nicht der Ellbogen selbst, sondern der um \(R_p\) verschobene Ellbogen.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">2</span> <span class="i18n" lang="en">Trilateration: Three Spheres, One Point</span><span class="i18n" lang="de">Trilateration: drei Kugeln, ein Punkt</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">Each of the 3 arms gives one sphere (Step 1), all with the same known radius \(L_f\) but a different, arm-specific center \(C_i\):</p>
+      <p class="small i18n" lang="de">Jeder der 3 Arme liefert eine Kugel (Schritt 1), alle mit demselben bekannten Radius \(L_f\), aber je einem arm-eigenen Mittelpunkt \(C_i\):</p>
+      <p>\[ |P-C_i| = L_f \quad (i=0,1,2) \]</p>
+      <p class="small i18n" lang="en">\(P\) has to satisfy all three at once — it's the (generically unique, reachable) common intersection point of the three spheres.</p>
+      <p class="small i18n" lang="de">\(P\) muss alle drei gleichzeitig erfüllen — er ist der (im Allgemeinen eindeutige, erreichbare) gemeinsame Schnittpunkt der drei Kugeln.</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 220" class="diagram" width="380">
+        <circle cx="150" cy="118" r="2.5" fill="#1a1a2e"/>
+        <text x="156" y="116" font-size="9">O</text>
+        <circle cx="150" cy="60" r="65" fill="none" stroke="#c0392b" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="205" cy="145" r="65" fill="none" stroke="#2980b9" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="95" cy="145" r="65" fill="none" stroke="#16a085" stroke-width="1" stroke-dasharray="3,3"/>
+        <circle cx="150" cy="60" r="4.5" fill="#c0392b"/>
+        <text x="158" y="57" font-size="10" fill="#c0392b">C&#8321;</text>
+        <circle cx="205" cy="145" r="4.5" fill="#2980b9"/>
+        <text x="213" y="145" font-size="10" fill="#2980b9">C&#8322;</text>
+        <circle cx="95" cy="145" r="4.5" fill="#16a085"/>
+        <text x="62" y="145" font-size="10" fill="#16a085">C&#8323;</text>
+        <circle cx="150" cy="116" r="5" fill="#8e44ad"/>
+        <text x="158" y="110" font-size="11" fill="#8e44ad" font-weight="bold">P</text>
+      </svg>
+      <p class="small i18n" lang="en">Schematic top view: each dashed circle is one arm's sphere (radius \(L_f\) around its \(C_i\)). \(P\) is where all three overlap.</p>
+      <p class="small i18n" lang="de">Schematische Draufsicht: Jeder gestrichelte Kreis ist die Kugel eines Arms (Radius \(L_f\) um sein \(C_i\)). \(P\) liegt dort, wo sich alle drei überlappen.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">3</span> <span class="i18n" lang="en">Subtract Pairs &rarr; Two Planes</span><span class="i18n" lang="de">Paare subtrahieren &rarr; zwei Ebenen</span></h2>
+  <p class="small i18n" lang="en">Three spheres, each with the \(|P|^2\) quadratic term — but that term is <b>the same in every equation</b>. Subtracting arm 0's equation from arm 1's and arm 2's cancels it, leaving two <em>linear</em> equations (planes) in \(x,y,z\):</p>
+  <p class="small i18n" lang="de">Drei Kugeln, jede mit dem quadratischen Term \(|P|^2\) — aber dieser Term ist <b>in jeder Gleichung gleich</b>. Zieht man Gleichung 0 von Gleichung 1 und 2 ab, hebt er sich weg, und es bleiben zwei <em>lineare</em> Gleichungen (Ebenen) in \(x,y,z\):</p>
+  <p>\[ 2(C_i - C_0)\cdot P = |C_i|^2 - |C_0|^2, \qquad i = 1, 2 \]</p>
+  <p class="small i18n" lang="en">Two planes in three unknowns aren't enough to pin down \(P\) alone — but they're enough to express \(x\) and \(y\) as linear functions of \(z\).</p>
+  <p class="small i18n" lang="de">Zwei Ebenen in drei Unbekannten reichen nicht aus, um \(P\) allein festzulegen — aber sie reichen, um \(x\) und \(y\) als lineare Funktionen von \(z\) auszudrücken.</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">4</span> <span class="i18n" lang="en">Solve the Linear System, Then the Quadratic</span><span class="i18n" lang="de">Das lineare System lösen, dann das quadratische</span></h2>
+  <p class="small i18n" lang="en">Solving the 2&times;2 linear system from Step 3 gives \(x\) and \(y\) in terms of \(z\):</p>
+  <p class="small i18n" lang="de">Löst man das 2&times;2-lineare System aus Schritt 3, erhält man \(x\) und \(y\) in Abhängigkeit von \(z\):</p>
+  <p>\[ x = m_x z + n_x \qquad y = m_y z + n_y \]</p>
+  <p class="small i18n" lang="en">Substituting both into arm 0's sphere equation \(|P-C_0|=L_f\) leaves a single quadratic — now in \(z\) alone:</p>
+  <p class="small i18n" lang="de">Setzt man beide in die Kugelgleichung \(|P-C_0|=L_f\) von Arm 0 ein, bleibt eine einzige quadratische Gleichung — nun allein in \(z\):</p>
+  <p>\[ A z^2 + B z + C = 0 \]</p>
+</section>
+
+<section>
+  <h2><span class="step-badge">5</span> <span class="i18n" lang="en">Two Solutions &mdash; Pick the Physical One</span><span class="i18n" lang="de">Zwei Lösungen &mdash; die physikalische wählen</span></h2>
+  <div class="cols">
+    <div>
+      <p class="small i18n" lang="en">The quadratic's two roots are two candidate platform heights:</p>
+      <p class="small i18n" lang="de">Die beiden Wurzeln der quadratischen Gleichung sind zwei mögliche Plattformhöhen:</p>
+      <p>\[ z = \frac{-B \pm \sqrt{B^2-4AC}}{2A} \]</p>
+      <p class="small i18n" lang="en">Take the lower root (further below the base) — the arms physically hang down, they can't fold the platform back up near the base. Same logic as Step 6 of the IK derivation.</p>
+      <p class="small i18n" lang="de">Man wählt die untere Wurzel (weiter unterhalb der Basis) — die Arme hängen physisch nach unten und können die Plattform nicht zurück in Basisnähe klappen. Dieselbe Logik wie in Schritt 6 der IK-Herleitung.</p>
+    </div>
+    <div>
+      <svg viewBox="0 0 300 210" class="diagram" width="380">
+        <line x1="15" y1="30" x2="285" y2="30" stroke="#1a1a2e" stroke-width="2"/>
+        <text x="118" y="22" font-size="10" fill="#1a1a2e">base plane</text>
+        <line x1="90" y1="30" x2="90" y2="60" stroke="#999" stroke-width="2" stroke-dasharray="4,3"/>
+        <circle cx="90" cy="60" r="5" fill="#999"/>
+        <text x="14" y="80" font-size="9" fill="#999">P&#8321; rejected (upper root)</text>
+        <line x1="210" y1="30" x2="210" y2="170" stroke="#c0392b" stroke-width="2.5"/>
+        <circle cx="210" cy="170" r="6" fill="#c0392b"/>
+        <text x="148" y="192" font-size="9" fill="#c0392b" font-weight="bold">P&#8322; chosen (lower root)</text>
+      </svg>
+      <p class="small i18n" lang="en">Two \(z\) roots &rarr; two heights for the same three arm angles. Only the deeper one is how a real delta robot can actually hang.</p>
+      <p class="small i18n" lang="de">Zwei \(z\)-Wurzeln &rarr; zwei Höhen für dieselben drei Armwinkel. Nur die tiefere entspricht der Art, wie ein realer Delta-Roboter tatsächlich hängen kann.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="step-badge">6</span> <span class="i18n" lang="en">Assemble the Closed Form</span><span class="i18n" lang="de">Die geschlossene Lösung zusammensetzen</span></h2>
+  <p class="small i18n" lang="en">Putting Steps 1&ndash;5 together, per arm \(i=0,1,2\), reusing \(k_i,h_i\) from Step 1:</p>
+  <p class="small i18n" lang="de">Schritte 1&ndash;5 zusammengesetzt, für jeden Arm \(i=0,1,2\), mit \(k_i,h_i\) aus Schritt 1:</p>
+  <p>\[ C_i = (k_i\sin\gamma_i,\ -k_i\cos\gamma_i,\ h_i) \]</p>
+  <p class="small i18n" lang="en">then solve the 2 plane equations (Step 3) for \(x(z), y(z)\), substitute into arm 0's sphere equation, and take the lower root of the resulting quadratic (Steps 4&ndash;5):</p>
+  <p class="small i18n" lang="de">dann die 2 Ebenengleichungen (Schritt 3) nach \(x(z), y(z)\) lösen, in die Kugelgleichung von Arm 0 einsetzen und die untere Wurzel der resultierenden quadratischen Gleichung nehmen (Schritte 4&ndash;5):</p>
+  <p>\[ z = \frac{-B-\sqrt{B^2-4AC}}{2A} \]</p>
+  <p>\[ x = m_xz+n_x, \qquad y = m_yz+n_y \]</p>
+</section>
+<section>
+  <h2><span class="step-badge">6</span> <span class="i18n" lang="en">Assemble the Closed Form</span><span class="i18n" lang="de">Die geschlossene Lösung zusammensetzen</span> <span style="opacity:.5" class="i18n" lang="en">(cont. 1/2)</span><span style="opacity:.5" class="i18n" lang="de">(Forts. 1/2)</span></h2>
+  <pre><code class="language-python" data-trim>import math
+
+def delta_fk(thetas, Rb, Rp, Lb, Lf):
+    Rdiff = Rb - Rp
+    C = []
+    for i in range(3):
+        g = math.radians(i * 120)
+        k = Rdiff + Lb * math.cos(thetas[i])
+        h = -Lb * math.sin(thetas[i])
+        C.append((k * math.sin(g), -k * math.cos(g), h))
+    C0, C1, C2 = C
+    def sq(p): return p[0]**2 + p[1]**2 + p[2]**2
+    S0 = sq(C0)
+    # plane(Ci): 2(Ci-C0)*P = |Ci|^2 - |C0|^2
+    def plane(Ci):
+        Si = sq(Ci)
+        return (2*(Ci[0]-C0[0]), 2*(Ci[1]-C0[1]), 2*(Ci[2]-C0[2]), Si - S0)
+    A1, B1, D1, E1 = plane(C1)
+    A2, B2, D2, E2 = plane(C2)
+    # ...continued on the next slide
+</code></pre>
+</section>
+<section>
+  <h2><span class="step-badge">6</span> <span class="i18n" lang="en">Assemble the Closed Form</span><span class="i18n" lang="de">Die geschlossene Lösung zusammensetzen</span> <span style="opacity:.5" class="i18n" lang="en">(cont. 2/2)</span><span style="opacity:.5" class="i18n" lang="de">(Forts. 2/2)</span></h2>
+  <pre><code class="language-python" data-trim>    # solve the 2x2 system for x, y in terms of z
+    det = A1 * B2 - A2 * B1
+    nx = (E1*B2 - E2*B1) / det
+    mx = (-D1*B2 + D2*B1) / det
+    ny = (A1*E2 - A2*E1) / det
+    my = (-A1*D2 + A2*D1) / det
+    px, qx = mx, nx - C0[0]
+    py, qy = my, ny - C0[1]
+    Aq = px*px + py*py + 1
+    Bq = 2*px*qx + 2*py*qy - 2*C0[2]
+    Cq = qx*qx + qy*qy + C0[2]**2 - Lf**2
+    disc = Bq*Bq - 4*Aq*Cq
+    if disc < 0:
+        return None                  # thetas don't match a valid pose
+    z = (-Bq - math.sqrt(disc)) / (2*Aq)   # lower root = physical
+    x = mx * z + nx
+    y = my * z + ny
+    return (x, y, z)
+</code></pre>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Live Demo &mdash; Forward Kinematics</h2>
+  <h2 class="i18n" lang="de">Live-Demo &mdash; Vorwärtskinematik</h2>
+  <div class="demo-wrap">
+    <div class="demo-controls">
+      <b class="small i18n" lang="en">Bicep angles</b>
+      <b class="small i18n" lang="de">Bizepswinkel</b>
+      <label>&theta;1: <span id="vFTh1">35</span>&deg;<br><input id="sFTh1" type="range" min="-90" max="90" value="35" step="1"></label>
+      <label>&theta;2: <span id="vFTh2">20</span>&deg;<br><input id="sFTh2" type="range" min="-90" max="90" value="20" step="1"></label>
+      <label>&theta;3: <span id="vFTh3">35</span>&deg;<br><input id="sFTh3" type="range" min="-90" max="90" value="35" step="1"></label>
+      <b class="small i18n" lang="en">Robot geometry</b>
+      <b class="small i18n" lang="de">Robotergeometrie</b>
+      <label>R<sub>b</sub> (<span class="i18n" lang="en">base radius, mm</span><span class="i18n" lang="de">Basisradius, mm</span>): <input id="sFRb" type="number" min="10" max="500" value="100" step="1"></label>
+      <label>R<sub>p</sub> (<span class="i18n" lang="en">platform radius, mm</span><span class="i18n" lang="de">Plattformradius, mm</span>): <input id="sFRp" type="number" min="5" max="300" value="40" step="1"></label>
+      <label>L<sub>b</sub> (<span class="i18n" lang="en">bicep length, mm</span><span class="i18n" lang="de">Bizepslänge, mm</span>): <input id="sFLb" type="number" min="20" max="800" value="200" step="1"></label>
+      <label>L<sub>f</sub> (<span class="i18n" lang="en">forearm length, mm</span><span class="i18n" lang="de">Unterarmlänge, mm</span>): <input id="sFLf" type="number" min="20" max="1000" value="400" step="1"></label>
+      <div class="readout" id="readoutF">P = (--, --, --)</div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="dr-canvas-fk" width="480" height="420"></canvas>
+      <div class="hint i18n" lang="en">drag to rotate &middot; shift+drag to pan &middot; scroll to zoom &middot; double-click to reset</div>
+      <div class="hint i18n" lang="de">Ziehen zum Drehen &middot; Umschalt+Ziehen zum Verschieben &middot; Scrollen zum Zoomen &middot; Doppelklick zum Zurücksetzen</div>
+    </div>
+  </div>
+</section>
+</section>
+
+<section>
+  <h2 class="i18n" lang="en">Summary</h2>
+  <h2 class="i18n" lang="de">Zusammenfassung</h2>
+  <ul class="i18n" lang="en">
+    <li>Kinematics: FK is usually easy, IK is the interesting problem — for delta robots it flips: IK is closed-form per arm, FK needs trilateration across all 3</li>
+    <li>Delta robots trade 6-DOF generality for 3-DOF speed &amp; rigidity</li>
+    <li>Parallelogram forearms &rarr; orientation-free platform &rarr; closed-form IK</li>
+    <li>Per-arm symmetry + one quadratic equation solves the whole robot (either direction)</li>
+  </ul>
+  <ul class="i18n" lang="de">
+    <li>Kinematik: FK ist meist einfach, IK das interessante Problem — bei Delta-Robotern kehrt sich das um: IK ist pro Arm geschlossen lösbar, FK braucht Trilateration über alle 3</li>
+    <li>Delta-Roboter tauschen 6-DOF-Allgemeinheit gegen 3-DOF-Geschwindigkeit &amp; Steifigkeit</li>
+    <li>Parallelogramm-Unterarme &rarr; orientierungsfreie Plattform &rarr; geschlossene IK-Lösung</li>
+    <li>Symmetrie pro Arm + eine quadratische Gleichung löst den gesamten Roboter (in beide Richtungen)</li>
+  </ul>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/plugin/notes/notes.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@4.6.1/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  plugins: [ RevealNotes, RevealHighlight ],
+  width: 1100, height: 750, margin: 0.08,
+});
+Reveal.on('ready', renderMath);
+Reveal.on('slidechanged', renderMath);
+function renderMath(){
+  renderMathInElement(document.body, {
+    delimiters: [
+      {left:'\\[', right:'\\]', display:true},
+      {left:'\\(', right:'\\)', display:false}
+    ]
+  });
+}
+
+function curLang(){ return document.documentElement.getAttribute('data-lang')==='de' ? 'de' : 'en'; }
+function syncLangUI(){
+  const lang = curLang();
+  document.getElementById('lang-toggle').textContent = lang==='en' ? 'DE' : 'EN';
+  document.title = lang==='de' ? 'Kinematik & das inverse Kinematikproblem des Delta-Roboters' : 'Kinematics & Delta Robot Inverse Kinematics';
+}
+function toggleLang(){
+  const next = curLang()==='de' ? 'en' : 'de';
+  document.documentElement.setAttribute('data-lang', next);
+  localStorage.setItem('lang', next);
+  syncLangUI();
+  if (window.Reveal) Reveal.layout();
+  if (typeof drawRobot === 'function') drawRobot();
+  if (typeof drawRobotFK === 'function') drawRobotFK();
+}
+syncLangUI();
+
+// ---- Delta robot IK (same math as ik-check.js, verified by round-trip test) ----
+const D2R = Math.PI/180;
+function val(id){ return +document.getElementById(id).value; }
+function deltaIK(x,y,z,{Rb,Rp,Lb,Lf}){
+  const Rdiff = Rb-Rp;
+  const out = [];
+  for(let i=0;i<3;i++){
+    const g = i*120*D2R, sg=Math.sin(g), cg=Math.cos(g);
+    const Wx = x*sg - y*cg - Rdiff, Wy = x*cg + y*sg, Wz = z;
+    const a = 2*Lb*Wz, b = -2*Lb*Wx;
+    const K = Wx*Wx+Wy*Wy+Wz*Wz+Lb*Lb-Lf*Lf, c = -K;
+    const disc = a*a+b*b-c*c;
+    if(disc<0){ out.push(null); continue; }
+    const sq = Math.sqrt(disc);
+    const th1 = 2*Math.atan((a+sq)/(b+c));
+    const th2 = 2*Math.atan((a-sq)/(b+c));
+    out.push(Math.abs(th1)<Math.abs(th2) ? th1 : th2);
+  }
+  return out;
+}
+function armPoints(x,y,z,{Rb,Rp,Lb,Lf},thetas){
+  const arms = [];
+  for(let i=0;i<3;i++){
+    const g = i*120*D2R;
+    const r = [Math.sin(g), -Math.cos(g), 0];
+    const B = [Rb*r[0], Rb*r[1], 0];
+    const th = thetas[i];
+    const E = th==null ? null : [B[0]+Lb*Math.cos(th)*r[0], B[1]+Lb*Math.cos(th)*r[1], -Lb*Math.sin(th)];
+    const Pw = [x+Rp*r[0], y+Rp*r[1], z];
+    arms.push({B,E,Pw});
+  }
+  return arms;
+}
+// FK: given the 3 bicep angles, trilaterate the platform center (same math as fk-check.js)
+function deltaFK(thetas,{Rb,Rp,Lb,Lf}){
+  const Rdiff = Rb-Rp;
+  const C = [];
+  for(let i=0;i<3;i++){
+    const g = i*120*D2R, sg=Math.sin(g), cg=Math.cos(g);
+    const k = Rdiff + Lb*Math.cos(thetas[i]);
+    const h = -Lb*Math.sin(thetas[i]);
+    C.push([k*sg, -k*cg, h]);
+  }
+  const [C0,C1,C2] = C;
+  const sq = p => p[0]*p[0]+p[1]*p[1]+p[2]*p[2];
+  const S0 = sq(C0);
+  const planeEq = Ci => [2*(Ci[0]-C0[0]), 2*(Ci[1]-C0[1]), 2*(Ci[2]-C0[2]), sq(Ci)-S0];
+  const [A1,B1,D1,E1] = planeEq(C1);
+  const [A2,B2,D2,E2] = planeEq(C2);
+  const det = A1*B2 - A2*B1;
+  const nx = (E1*B2 - E2*B1)/det, mx = (-D1*B2 + D2*B1)/det;
+  const ny = (A1*E2 - A2*E1)/det, my = (-A1*D2 + A2*D1)/det;
+  const px = mx, qx = nx - C0[0];
+  const py = my, qy = ny - C0[1];
+  const Aq = px*px+py*py+1;
+  const Bq = 2*px*qx+2*py*qy-2*C0[2];
+  const Cq = qx*qx+qy*qy+C0[2]*C0[2]-Lf*Lf;
+  const disc = Bq*Bq-4*Aq*Cq;
+  if(disc<0) return null;
+  const sqd = Math.sqrt(disc);
+  const z = Math.min((-Bq+sqd)/(2*Aq), (-Bq-sqd)/(2*Aq)); // physical: further below the base
+  return [mx*z+nx, my*z+ny, z];
+}
+// orbit projection: yaw around the vertical (Z) axis, pitch tilts the elevation angle, orthographic
+function proj(p, cx, cy, scale, yaw, pitch){
+  const [x,y,z] = p;
+  const xr = x*Math.cos(yaw) - y*Math.sin(yaw);
+  const yr = x*Math.sin(yaw) + y*Math.cos(yaw);
+  const up = z*Math.cos(pitch) - yr*Math.sin(pitch); // pitch=0 -> side view (z is up), pitch=90deg -> top-down
+  return [ cx + xr*scale, cy - up*scale ];
+}
+// depth along the camera's viewing axis (the component proj() discards) - smaller = farther from camera.
+// used for painter's-algorithm draw ordering so shapes at grazing pitch angles don't visually cross.
+function camDepth(p, yaw, pitch){
+  const [x,y,z] = p;
+  const yr = x*Math.sin(yaw) + y*Math.cos(yaw);
+  return z*Math.sin(pitch) + yr*Math.cos(pitch);
+}
+// shared canvas renderer for both demos; poseOk gates drawing the platform + forearms
+// (defaults to per-arm theta validity, but FK passes it explicitly since its thetas are always given)
+// per-canvas pan/zoom/rotate state, stored on the element so both demos stay independent
+const DEFAULT_YAW = 45*D2R, DEFAULT_PITCH = 35*D2R;
+function viewState(canvas){
+  if(!canvas._view) canvas._view = {panX:0, panY:0, zoom:1, yaw:DEFAULT_YAW, pitch:DEFAULT_PITCH};
+  return canvas._view;
+}
+// drag to rotate (shift+drag to pan instead), wheel to zoom, double-click to reset
+function setupPanZoom(canvas, redraw){
+  const v = viewState(canvas);
+  let dragging = false, mode = 'rotate', lastX = 0, lastY = 0;
+  canvas.addEventListener('pointerdown', e => {
+    dragging = true; mode = e.shiftKey ? 'pan' : 'rotate';
+    lastX = e.clientX; lastY = e.clientY;
+    canvas.style.cursor = 'grabbing';
+    try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
+  });
+  canvas.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if(mode === 'pan'){ v.panX += dx; v.panY += dy; }
+    else {
+      v.yaw -= dx*0.008;
+      v.pitch = Math.max(10*D2R, Math.min(80*D2R, v.pitch - dy*0.008));
+    }
+    redraw();
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev => canvas.addEventListener(ev, () => { dragging = false; canvas.style.cursor = 'grab'; }));
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    v.zoom = Math.min(4, Math.max(0.3, v.zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    redraw();
+  }, {passive:false});
+  canvas.addEventListener('dblclick', () => { v.panX = 0; v.panY = 0; v.zoom = 1; v.yaw = DEFAULT_YAW; v.pitch = DEFAULT_PITCH; redraw(); });
+}
+function renderArms(canvas, x, y, z, GEO, thetas, poseOk){
+  if(poseOk===undefined) poseOk = !thetas.includes(null);
+  const ctx = canvas.getContext('2d');
+  const arms = armPoints(x,y,z,GEO,thetas);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const view = viewState(canvas);
+  const cx = canvas.width/2 + view.panX, cy = 90 + view.panY;
+  const scale = (380 / (GEO.Rb + GEO.Lb + GEO.Lf)) * view.zoom; // dynamic so any geometry fits the canvas, then user zoom
+  const pr = p => proj(p, cx, cy, scale, view.yaw, view.pitch);
+  const dep = p => camDepth(p, view.yaw, view.pitch);
+  const avgDep = (...pts) => pts.reduce((s,p)=>s+dep(p),0) / pts.length;
+  const colors = ['#e74c3c','#3498db','#f1c40f'];
+  // painter's algorithm: collect every shape with its camera-space depth, then draw
+  // farthest-first so nothing at grazing pitch angles visually crosses in front of what
+  // should be behind it (plain wireframe has no z-buffer, so draw order is all we get).
+  const items = [];
+  items.push({ depth: avgDep(...arms.map(a=>a.B)), draw: () => {
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    arms.forEach((a,i)=>{ const p = pr(a.B); i? ctx.lineTo(...p): ctx.moveTo(...p); });
+    ctx.closePath(); ctx.stroke();
+  }});
+  if(poseOk){
+    items.push({ depth: avgDep(...arms.map(a=>a.Pw)), draw: () => {
+      ctx.strokeStyle = '#2ecc71';
+      ctx.beginPath();
+      arms.forEach((a,i)=>{ const p = pr(a.Pw); i? ctx.lineTo(...p): ctx.moveTo(...p); });
+      ctx.closePath(); ctx.stroke();
+    }});
+  }
+  arms.forEach((a,i)=>{
+    const color = colors[i];
+    if(a.E){
+      items.push({ depth: avgDep(a.B,a.E), draw: () => {
+        ctx.strokeStyle = color; ctx.lineWidth = 3;
+        const pB = pr(a.B), pE = pr(a.E);
+        ctx.beginPath(); ctx.arc(...pB,4,0,7); ctx.fillStyle=color; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(...pB); ctx.lineTo(...pE); ctx.stroke();
+      }});
+      if(poseOk){
+        items.push({ depth: avgDep(a.E,a.Pw), draw: () => {
+          ctx.strokeStyle = color; ctx.lineWidth = 3;
+          const pE = pr(a.E), pW = pr(a.Pw);
+          ctx.beginPath(); ctx.setLineDash([4,3]); ctx.moveTo(...pE); ctx.lineTo(...pW); ctx.stroke(); ctx.setLineDash([]);
+        }});
+      }
+    } else {
+      items.push({ depth: dep(a.B), draw: () => {
+        const pB = pr(a.B);
+        ctx.beginPath(); ctx.arc(...pB,4,0,7); ctx.fillStyle=color; ctx.fill();
+      }});
+    }
+  });
+  items.sort((p,q) => p.depth - q.depth); // farthest (smallest depth) first, nearest drawn last/on top
+  items.forEach(it => it.draw());
+}
+function drawRobot(){
+  const canvas = document.getElementById('dr-canvas');
+  if(!canvas) return;
+  const GEO = { Rb:val('sRb'), Rp:val('sRp'), Lb:val('sLb'), Lf:val('sLf') };
+  // keep the position sliders' ranges meaningful for the current geometry
+  const sz = document.getElementById('sz');
+  const reach = GEO.Lb + GEO.Lf;
+  sz.min = Math.round(reach*0.3); sz.max = Math.round(reach*0.95);
+  if(+sz.value < +sz.min) sz.value = sz.min;
+  if(+sz.value > +sz.max) sz.value = sz.max;
+  const sx = document.getElementById('sx'), sy = document.getElementById('sy');
+  const xyRange = Math.round((GEO.Rb + reach) * 0.35);
+  [sx, sy].forEach(s => {
+    s.min = -xyRange; s.max = xyRange;
+    if(+s.value < -xyRange) s.value = -xyRange;
+    if(+s.value > xyRange) s.value = xyRange;
+  });
+  const x = +sx.value;
+  const y = +sy.value;
+  const z = -(+sz.value);
+  document.getElementById('vx').textContent = x;
+  document.getElementById('vy').textContent = y;
+  document.getElementById('vz').textContent = -z;
+  const thetas = deltaIK(x,y,z,GEO);
+  const readout = document.getElementById('readout');
+  if(thetas.includes(null)){
+    readout.innerHTML = `<span class="warn">${curLang()==='de' ? 'Ziel nicht erreichbar' : 'target unreachable'}</span>`;
+  } else {
+    readout.innerHTML = thetas.map((t,i)=>`&theta;${i+1} = ${(t/D2R).toFixed(1)}°`).join(' &nbsp; ');
+  }
+  renderArms(canvas, x, y, z, GEO, thetas);
+}
+function drawRobotFK(){
+  const canvas = document.getElementById('dr-canvas-fk');
+  if(!canvas) return;
+  const GEO = { Rb:val('sFRb'), Rp:val('sFRp'), Lb:val('sFLb'), Lf:val('sFLf') };
+  const t1 = val('sFTh1'), t2 = val('sFTh2'), t3 = val('sFTh3');
+  document.getElementById('vFTh1').textContent = t1;
+  document.getElementById('vFTh2').textContent = t2;
+  document.getElementById('vFTh3').textContent = t3;
+  const thetas = [t1*D2R, t2*D2R, t3*D2R];
+  const P = deltaFK(thetas, GEO);
+  const readout = document.getElementById('readoutF');
+  const poseOk = P !== null;
+  readout.innerHTML = poseOk
+    ? `P = (${P[0].toFixed(1)}, ${P[1].toFixed(1)}, ${P[2].toFixed(1)})`
+    : `<span class="warn">${curLang()==='de' ? 'Keine gültige Plattformlage' : 'no consistent platform pose'}</span>`;
+  const [x,y,z] = poseOk ? P : [0,0,0];
+  renderArms(canvas, x, y, z, GEO, thetas, poseOk);
+}
+['sx','sy','sz','sRb','sRp','sLb','sLf'].forEach(id => document.getElementById(id).addEventListener('input', drawRobot));
+['sFTh1','sFTh2','sFTh3','sFRb','sFRp','sFLb','sFLf'].forEach(id => document.getElementById(id).addEventListener('input', drawRobotFK));
+setupPanZoom(document.getElementById('dr-canvas'), drawRobot);
+setupPanZoom(document.getElementById('dr-canvas-fk'), drawRobotFK);
+drawRobot();
+drawRobotFK();
+</script>
+</body>
+</html>
